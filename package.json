@@ -1,0 +1,12 @@
+{
+  "name": "marcopetta-guitarcoach",
+  "version": "1.0.0",
+  "description": "Marco Petta Guitar Coach Website",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
