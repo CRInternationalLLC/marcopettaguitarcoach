@@ -364,12 +364,16 @@ nav a:hover::after{width:100%}
 }
 .h-title{
   font-family:var(--frock);
-  font-size:clamp(42px,6vw,88px);
+  font-size:clamp(28px,7.5vw,88px);
   line-height:.92;letter-spacing:.01em;text-transform:uppercase;margin-bottom:20px;
   display:block;
-  white-space:nowrap;
+  white-space:normal;
 }
-.h-title span{display:block;white-space:nowrap}
+.h-title span{display:block;white-space:normal}
+@media(max-width:480px){
+  .h-title{font-size:clamp(24px,9vw,52px);white-space:normal;}
+  .h-title span{white-space:normal;}
+}
 .h-title .line-amber{color:var(--amber)}
 .h-title .line-red{color:var(--red)}
 .h-sub{
