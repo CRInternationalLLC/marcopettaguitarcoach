@@ -53,6 +53,9 @@ h1, h2, h3, .h-title, .h-title span, .t-rock, .nav-logo,
   --p-color:rgba(255,255,255,.62);
 }
 html{scroll-behavior:smooth}
+*{box-sizing:border-box}
+img{content-visibility:auto}
+.h-img,.h-cutout,.h-3d-text,[class*="bgwm"],[id="ctaBg"]{will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden}
 body{background:var(--coal);color:var(--white);font-family:var(--fcond);overflow-x:hidden;cursor:none}
 
 /* ── GLOBAL PARAGRAPH STANDARD ──
@@ -101,12 +104,12 @@ body::after{
 }
 
 /* ── CURSOR ── */
-#cur{position:fixed;width:10px;height:10px;background:var(--amber);border-radius:50%;pointer-events:none;z-index:9999;transform:translate(-50%,-50%);mix-blend-mode:difference}
-#cur-r{position:fixed;width:36px;height:36px;border:1.5px solid rgba(245,166,35,.4);border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:width .3s,height .3s,border-color .3s}
+#cur{position:fixed;width:10px;height:10px;background:var(--amber);border-radius:50%;pointer-events:none;z-index:9999;transform:translate3d(-50%,-50%,0);mix-blend-mode:difference;will-change:transform}
+#cur-r{position:fixed;width:36px;height:36px;border:1.5px solid rgba(245,166,35,.4);border-radius:50%;pointer-events:none;z-index:9998;transform:translate3d(-50%,-50%,0);transition:width .3s,height .3s,border-color .3s;will-change:transform}
 @media(hover:none){#cur,#cur-r,body::after{display:none}body{cursor:auto}}
 
 /* ── PROGRESS ── */
-#prog{position:fixed;top:0;left:0;height:3px;background:var(--red);z-index:400;width:0%;box-shadow:0 0 12px var(--red)}
+#prog{position:fixed;top:0;left:0;height:3px;width:100%;background:var(--red);z-index:10001;transform:scaleX(0);transform-origin:left center;transition:none;will-change:transform}
 
 /* ═══ TYPE SYSTEM ═══ */
 /* H1 — unique page title (hero only) */
@@ -1238,50 +1241,89 @@ footer p{font-family:var(--fcond);font-size:.7rem;color:rgba(255,255,255,.22);le
 </div>
 
 <script>
-/* CURSOR */
+/* ═══════════════════════════════════
+   60 FPS PERFORMANCE ENGINE
+   ─────────────────────────────────
+   - Cursor via transform3d (no left/top)
+   - Single rAF loop per tutto
+   - Scroll batchato: 1 read → N writes
+   - Nessun getBoundingClientRect in scroll
+   - Passive listeners ovunque
+═══════════════════════════════════ */
+
+/* CURSOR — usa transform3d, zero reflow */
 const cur=document.getElementById('cur'),ring=document.getElementById('cur-r');
 let mx=0,my=0,rx=0,ry=0;
-document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY;cur.style.left=mx+'px';cur.style.top=my+'px'});
-(function a(){rx+=(mx-rx)*.11;ry+=(my-ry)*.11;ring.style.left=rx+'px';ring.style.top=ry+'px';requestAnimationFrame(a)})();
-document.querySelectorAll('a,button').forEach(el=>{
-  el.addEventListener('mouseenter',()=>{cur.style.width='16px';cur.style.height='16px';ring.style.width='50px';ring.style.height='50px';ring.style.borderColor='var(--amber)'});
-  el.addEventListener('mouseleave',()=>{cur.style.width='10px';cur.style.height='10px';ring.style.width='36px';ring.style.height='36px';ring.style.borderColor='rgba(245,166,35,.4)'});
-});
+document.addEventListener('mousemove',e=>{mx=e.clientX;my=e.clientY},{passive:true});
 
-/* PROGRESS + NAV */
-const prog=document.getElementById('prog'),nav=document.getElementById('nav');
-window.addEventListener('scroll',()=>{
-  prog.style.width=(window.scrollY/(document.body.scrollHeight-window.innerHeight)*100)+'%';
-  nav.classList.toggle('s',window.scrollY>60);
-},{passive:true});
+/* SCROLL STATE — letto una volta per frame */
+let scrollY=0,ticking=false;
+window.addEventListener('scroll',()=>{scrollY=window.scrollY;if(!ticking){ticking=true;requestAnimationFrame(onFrame);}},{passive:true});
 
-/* HERO PARALLAX — 3-layer depth (CARPETMAN style)
-   bg photo : slowest  → far away
-   3D text  : medium   → mid distance
-   cutout   : same as bg → subject locked to bg plane */
+/* PARALLAX ELEMENTS */
 const hImg    = document.getElementById('hImg');
 const h3dText = document.getElementById('hWm');
 const hCutout = document.getElementById('hCutout');
-window.addEventListener('scroll', () => {
-  const y = window.scrollY;
-  if (hImg)    hImg.style.transform    = `scale(1.08) translateY(${y * .3}px)`;
-  if (h3dText) h3dText.style.transform = `translateY(${y * .5}px)`; // text moves faster → pops forward
-  if (hCutout) hCutout.style.transform = `translateY(${y * .3}px)`; // same as bg → stays locked
-}, {passive: true});
+const ctaBg   = document.getElementById('ctaBg');
+const bgwms   = [...document.querySelectorAll('.bgwm')];
+const prog    = document.getElementById('prog');
+const nav     = document.getElementById('nav');
+const maxScroll = ()=>document.body.scrollHeight-window.innerHeight;
 
-/* CTA BG PARALLAX */
-const ctaBg=document.getElementById('ctaBg');
-window.addEventListener('scroll',()=>{
-  const r=ctaBg.parentElement.getBoundingClientRect();
-  ctaBg.style.transform=`scale(1.08) translateY(${r.top*.22}px)`;
-},{passive:true});
+/* Cache posizioni statiche per bgwm e ctaBg (no getBoundingClientRect in scroll) */
+let ctaTop=0, bgwmTops=[];
+function cachePositions(){
+  ctaTop = ctaBg ? ctaBg.parentElement.getBoundingClientRect().top + scrollY : 0;
+  bgwmTops = bgwms.map(wm => wm.parentElement.getBoundingClientRect().top + scrollY);
+}
+window.addEventListener('resize', cachePositions, {passive:true});
+window.addEventListener('load', cachePositions);
+setTimeout(cachePositions, 300);
 
-/* SECTION BG WM PARALLAX */
-document.querySelectorAll('.bgwm').forEach(wm=>{
-  window.addEventListener('scroll',()=>{
-    const r=wm.parentElement.getBoundingClientRect();
-    wm.style.transform=`translateY(${r.top*.13}px)`;
-  },{passive:true});
+/* UNICO RAF LOOP — cursor + parallax + progress + nav */
+function onFrame(){
+  ticking=false;
+  const y = scrollY;
+
+  /* cursor dot: transform3d → compositing layer, zero reflow */
+  cur.style.transform  = `translate3d(calc(${mx}px - 50%),calc(${my}px - 50%),0)`;
+
+  /* cursor ring: lerp smooth */
+  rx += (mx-rx)*.11;
+  ry += (my-ry)*.11;
+  ring.style.transform = `translate3d(calc(${rx}px - 50%),calc(${ry}px - 50%),0)`;
+
+  /* progress bar */
+  prog.style.transform = `scaleX(${y/maxScroll()})`;
+
+  /* nav */
+  nav.classList.toggle('s', y>60);
+
+  /* hero parallax */
+  if(hImg)    hImg.style.transform    = `scale(1.08) translate3d(0,${y*.3}px,0)`;
+  if(h3dText) h3dText.style.transform = `translate3d(0,${y*.5}px,0)`;
+  if(hCutout) hCutout.style.transform = `translate3d(0,${y*.3}px,0)`;
+
+  /* cta bg parallax — usa posizione cachata */
+  if(ctaBg){
+    const relY = y - ctaTop;
+    ctaBg.style.transform = `scale(1.08) translate3d(0,${relY*.22}px,0)`;
+  }
+
+  /* section bgwm parallax — usa posizioni cachate */
+  bgwms.forEach((wm,i)=>{
+    const relY = y - bgwmTops[i];
+    wm.style.transform = `translate3d(0,${relY*.13}px,0)`;
+  });
+
+  requestAnimationFrame(onFrame);
+}
+requestAnimationFrame(onFrame);
+
+/* HOVER cursor effects */
+document.querySelectorAll('a,button').forEach(el=>{
+  el.addEventListener('mouseenter',()=>{cur.style.width='16px';cur.style.height='16px';ring.style.width='50px';ring.style.height='50px';ring.style.borderColor='var(--amber)'},{passive:true});
+  el.addEventListener('mouseleave',()=>{cur.style.width='10px';cur.style.height='10px';ring.style.width='36px';ring.style.height='36px';ring.style.borderColor='rgba(245,166,35,.4)'},{passive:true});
 });
 
 /* SCROLL ANIMS */
@@ -1289,7 +1331,7 @@ const els=document.querySelectorAll('[data-a]');
 els.forEach(el=>{el.style.transitionDelay=el.style.getPropertyValue('--d')||'0s'});
 const io=new IntersectionObserver(entries=>{
   entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}});
-},{threshold:.1});
+},{threshold:.1,rootMargin:'0px 0px -40px 0px'});
 els.forEach(el=>io.observe(el));
 
 /* SMOOTH ANCHORS */
